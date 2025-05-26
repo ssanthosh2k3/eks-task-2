@@ -1,80 +1,69 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    IMAGE_NAME = "santhoshadmin/nginx-app"
-    IMAGE_TAG = "${env.BUILD_NUMBER}"
-    VALUES_FILE = "charts/nginx-app/values.yaml"
-  }
+    environment {
+        DOCKER_IMAGE = "ssanthosh2k3/nginx-san"
+        DOCKER_TAG = "${BUILD_NUMBER}"
+        HELM_CHART_DIR = "charts/nginx-app"
+        VALUES_FILE = "${HELM_CHART_DIR}/values.yaml"
+    }
 
-  options {
-    skipDefaultCheckout()
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        git branch: 'main', url: 'https://github.com/ssanthosh2k3/eks-task-2.git'
-        script {
-          def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
-          echo "Last commit message: '${commitMessage}'"
-          if (commitMessage.startsWith("Update image tag to")) {
-            echo "✅ Build triggered by auto-commit. Skipping to prevent loop."
-            currentBuild.result = 'SUCCESS'
-            error("Skipping build due to automated commit from Jenkins.")
-          }
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: 'https://github.com/ssanthosh2k3/eks-task-2.git', branch: 'main'
+                script {
+                    def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+                    echo "Last commit message: '${commitMessage}'"
+                    if (commitMessage.startsWith("Update image tag to")) {
+                        echo "✅ Build triggered by auto-commit. Skipping to prevent loop."
+                        currentBuild.result = 'SUCCESS'
+                        return
+                    }
+                }
+            }
         }
-      }
-    }
 
-    stage('Build Docker Image') {
-      steps {
-        script {
-          docker.build("${IMAGE_NAME}:${IMAGE_TAG}", ".")
+        stage('Build Docker Image') {
+            steps {
+                script {
+                    sh "docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} ."
+                }
+            }
         }
-      }
-    }
 
-    stage('Push Docker Image') {
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USER', passwordVariable: 'DOCKER_PASS')]) {
-          sh """
-            echo "$DOCKER_PASS" | docker login -u "$DOCKER_USER" --password-stdin
-            docker push ${IMAGE_NAME}:${IMAGE_TAG}
-          """
+        stage('Push Docker Image') {
+            steps {
+                script {
+                    sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                }
+            }
         }
-      }
-    }
 
-    stage('Update Helm Values') {
-      steps {
-        script {
-          withCredentials([usernamePassword(credentialsId: 'git-hub', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
-            sh """
-              sed -i 's|tag: .*|tag: "${IMAGE_TAG}"|' ${VALUES_FILE}
-              git config user.name "jenkins"
-              git config user.email "jenkins@local"
-              git add ${VALUES_FILE}
-              git commit -m "Update image tag to ${IMAGE_TAG}"
-              git push https://${GIT_USERNAME}:${GIT_PASSWORD}@github.com/ssanthosh2k3/eks-task-2.git main
-            """
-          }
+        stage('Update Helm Values') {
+            steps {
+                script {
+                    sh "sed -i 's|tag: .*|tag: \"${DOCKER_TAG}\"|' ${VALUES_FILE}"
+                    sh "git config user.email 'jenkins@example.com'"
+                    sh "git config user.name 'Jenkins CI'"
+                    sh "git add ${VALUES_FILE}"
+                    sh "git commit -m 'Update image tag to ${DOCKER_TAG}' || echo 'No changes to commit'"
+                    sh "git push origin main"
+                }
+            }
         }
-      }
     }
-  }
 
-  post {
-    success {
-      echo "✅ Image built and pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
-      echo "✅ values.yaml updated and pushed to GitHub"
+    post {
+        always {
+            echo "🧹 Cleaning up unused Docker images on Jenkins agent"
+            sh "docker image prune -af || true"
+        }
+        success {
+            echo "✅ Build and deployment steps completed successfully."
+        }
+        failure {
+            echo "❌ Build or deployment failed."
+        }
     }
-    failure {
-      echo "❌ Build or update failed"
-    }
-    always {
-      echo "🧹 Cleaning up unused Docker images on Jenkins agent"
-      sh 'docker image prune -af || true'
-    }
-  }
 }
