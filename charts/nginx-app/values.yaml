@@ -3,7 +3,7 @@ replicaCount: 2
 image:
   repository: santhoshadmin/nginx-app
   pullPolicy: IfNotPresent
-  tag: "55"
+  tag: "56"
 
 service:
   type: ClusterIP
