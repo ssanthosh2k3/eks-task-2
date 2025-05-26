@@ -57,7 +57,7 @@ pipeline {
   post {
     success {
       echo "✅ Image built and pushed: ${IMAGE_NAME}:${IMAGE_TAG}"
-      echo "✅ values.yaml updated and pushed to GitHub"
+      echo "✅values.yaml updated and pushed to GitHub"
     }
     failure {
       echo "❌ Build or update failed"
