@@ -50,18 +50,19 @@ pipeline {
         }
 
         stage('Checkout Helm Chart') {
-            steps {
-                dir('helm-chart') {
-                    checkout([$class: 'GitSCM',
-                              branches: [[name: 'refs/heads/main']],
-                              userRemoteConfigs: [[
-                                url: env.HELM_REPO,
-                                credentialsId: env.GIT_CREDENTIALS
-                              ]]
-                    ])
-                }
-            }
+    steps {
+        dir('helm-chart') {
+            checkout([$class: 'GitSCM',
+                      branches: [[name: 'refs/heads/main']],
+                      userRemoteConfigs: [[
+                        url: env.HELM_REPO,
+                        credentialsId: env.GIT_CREDENTIALS
+                      ]],
+                      extensions: [[$class: 'LocalBranch', localBranch: 'main']]
+            ])
         }
+    }
+}
 
         stage('Update values.yaml with new image tag') {
             steps {
