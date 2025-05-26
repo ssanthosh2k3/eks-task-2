@@ -16,15 +16,12 @@ pipeline {
       steps {
         git branch: 'main', url: 'https://github.com/ssanthosh2k3/eks-task-2.git'
         script {
-          // Get last commit message
           def lastCommitMsg = sh(returnStdout: true, script: 'git log -1 --pretty=%B').trim()
           echo "Last commit message: '${lastCommitMsg}'"
-          
-          // Skip build if commit was triggered by Jenkins updating the image tag
           if (lastCommitMsg.contains("Update image tag")) {
             echo "Build triggered by automated commit. Skipping build to avoid loop."
-            currentBuild.result = 'SUCCESS'
-            error("Skipping build due to automated commit from Jenkins.")
+            currentBuild.result = 'NOT_BUILT'  // or 'ABORTED'
+            return
           }
         }
       }
