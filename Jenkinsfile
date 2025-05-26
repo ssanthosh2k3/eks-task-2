@@ -40,7 +40,6 @@ pipeline {
     stage('Update Helm Values') {
       steps {
         script {
-          // Use GitHub credentials for authenticated push
           withCredentials([usernamePassword(credentialsId: 'git-hub', usernameVariable: 'GIT_USERNAME', passwordVariable: 'GIT_PASSWORD')]) {
             sh """
               sed -i 's|tag: .*|tag: "${IMAGE_TAG}"|' ${VALUES_FILE}
@@ -63,6 +62,10 @@ pipeline {
     }
     failure {
       echo "❌ Build or update failed"
+    }
+    always {
+      echo "🧹 Cleaning up unused Docker images on Jenkins agent"
+      sh 'docker image prune -af || true'
     }
   }
 }
