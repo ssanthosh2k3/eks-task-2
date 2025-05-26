@@ -24,19 +24,18 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            steps {
-                script {
-                    def commitHash = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
-                    NEW_TAG = "build-${commitHash}"
-                    echo "New Docker Tag: ${NEW_TAG}"
+    steps {
+        script {
+            NEW_TAG = "build-${env.BUILD_NUMBER}"
+            echo "New Docker Tag: ${NEW_TAG}"
 
-                    docker.withRegistry('', env.DOCKERHUB_CREDENTIALS) {
-                        def appImage = docker.build("${DOCKER_IMAGE}:${NEW_TAG}")
-                        appImage.push()
-                    }
-                }
+            docker.withRegistry('', env.DOCKERHUB_CREDENTIALS) {
+                def appImage = docker.build("${DOCKER_IMAGE}:${NEW_TAG}")
+                appImage.push()
             }
         }
+    }
+}
 
         stage('Cleanup Docker Images') {
             steps {
