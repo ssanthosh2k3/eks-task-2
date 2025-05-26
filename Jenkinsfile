@@ -10,7 +10,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git credentialsId: "${GIT_CREDENTIALS}", url: 'https://github.com/ssanthosh2k3/eks-task-2'
+                git branch: 'main', credentialsId: "${GIT_CREDENTIALS}", url: 'https://github.com/ssanthosh2k3/eks-task-2'
             }
         }
 
