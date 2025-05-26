@@ -2,76 +2,86 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_CREDENTIALS = credentials('dockerhub-creds')
-        GIT_CREDENTIALS = credentials('git-hub')
-        IMAGE_NAME = 'santhoshadmin/nginx-app'
+        DOCKER_IMAGE = 'santhoshadmin/nginx-app'
+        GIT_CREDENTIALS = 'git-hub'
+        DOCKERHUB_CREDENTIALS = 'dockerhub-creds'
+        HELM_REPO = 'https://github.com/ssanthosh2k3/helm-eks.git'
+        HELM_CHART_PATH = 'nginx-app'
+        DOCKER_REPO = 'https://github.com/ssanthosh2k3/eks-task-2.git'
+        NEW_TAG = '' // will be dynamically set
     }
 
     stages {
-        stage('Checkout') {
+        stage('Checkout Docker App') {
             steps {
-                git branch: 'main', credentialsId: "${GIT_CREDENTIALS}", url: 'https://github.com/ssanthosh2k3/eks-task-2'
+                checkout([$class: 'GitSCM',
+                          branches: [[name: 'refs/heads/main']],
+                          userRemoteConfigs: [[
+                            url: env.DOCKER_REPO,
+                            credentialsId: env.GIT_CREDENTIALS
+                          ]]
+                ])
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    IMAGE_TAG = "${BUILD_NUMBER}"
-                    sh "docker build -t ${IMAGE_NAME}:${IMAGE_TAG} ."
+                    // Create a new tag with timestamp or git commit hash
+                    def commitHash = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
+                    NEW_TAG = "build-${commitHash}"
+                    echo "New Docker Tag: ${NEW_TAG}"
+
+                    docker.withRegistry('', env.DOCKERHUB_CREDENTIALS) {
+                        def appImage = docker.build("${DOCKER_IMAGE}:${NEW_TAG}")
+                        appImage.push()
+                    }
                 }
             }
         }
 
-        stage('Push to Docker Hub') {
+        stage('Cleanup Docker Images') {
             steps {
                 script {
-                    sh """
-                        echo "${DOCKER_CREDENTIALS_PSW}" | docker login -u "${DOCKER_CREDENTIALS_USR}" --password-stdin
-                        docker push ${IMAGE_NAME}:${IMAGE_TAG}
-                        docker logout
-                    """
+                    sh "docker rmi ${DOCKER_IMAGE}:${NEW_TAG} || true"
+                    sh "docker image prune -f"
                 }
             }
         }
 
-        stage('Update values.yaml') {
+        stage('Checkout Helm Chart') {
             steps {
-                script {
-                    sh """
-                        sed -i 's|repository:.*|repository: ${IMAGE_NAME}|' charts/nginx-app/values.yaml
-                        sed -i 's|tag:.*|tag: \\"${IMAGE_TAG}\\"|' charts/nginx-app/values.yaml
-                    """
+                dir('helm-chart') {
+                    checkout([$class: 'GitSCM',
+                              branches: [[name: 'refs/heads/main']],
+                              userRemoteConfigs: [[
+                                url: env.HELM_REPO,
+                                credentialsId: env.GIT_CREDENTIALS
+                              ]]
+                    ])
                 }
             }
         }
 
-        stage('Commit and Push changes') {
+        stage('Update values.yaml with new image tag') {
             steps {
-                script {
-                    sh """
-                        git config user.email "jenkins@yourdomain.com"
-                        git config user.name "Jenkins"
-                        git add charts/nginx-app/values.yaml
-                        git commit -m "Update image tag to ${IMAGE_TAG} [ci skip]" || echo "No changes to commit"
-                        git push https://${GIT_CREDENTIALS_USR}:${GIT_CREDENTIALS_PSW}@github.com/ssanthosh2k3/eks-task-2.git HEAD:main
-                    """
+                dir('helm-chart/nginx-app') {
+                    script {
+                        // Read values.yaml and replace tag
+                        def valuesFile = 'values.yaml'
+                        def content = readFile(valuesFile)
+                        def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
+                        writeFile(file: valuesFile, text: updated)
+
+                        sh "git config user.email 'jenkins@example.com'"
+                        sh "git config user.name 'Jenkins CI'"
+
+                        sh "git add ${valuesFile}"
+                        sh "git commit -m 'Update image tag to ${NEW_TAG} from Jenkins pipeline'"
+                        sh "git push origin main"
+                    }
                 }
             }
-        }
-
-        stage('Clean up Docker images') {
-            steps {
-                script {
-                    sh "docker rmi ${IMAGE_NAME}:${IMAGE_TAG} || true"
-                }
-            }
-        }
-    }
-
-    post {
-        always {
-            cleanWs()
         }
     }
 }
