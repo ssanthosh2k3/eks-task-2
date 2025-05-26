@@ -65,31 +65,16 @@ pipeline {
         }
 
         stage('Update values.yaml with new image tag') {
-            steps {
-                dir('helm-chart/nginx-app') {
-                    script {
-                        // Read values.yaml and replace tag line with new image tag
-                        def valuesFile = 'values.yaml'
-                        def content = readFile(valuesFile)
-                        def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
-                        writeFile(file: valuesFile, text: updated)
-
-                        sh "git config user.email 'jenkins@example.com'"
-                        sh "git config user.name 'Jenkins CI'"
-
-                        sh "git add ${valuesFile}"
-                        sh "git commit -m 'Update image tag to ${NEW_TAG} from Jenkins pipeline'"
-
-                        // Use credentials to push changes securely
-                        withCredentials([usernamePassword(credentialsId: env.GIT_CREDENTIALS, usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                            sh """
-                                git remote set-url origin https://${GIT_USER}:${GIT_PASS}@github.com/ssanthosh2k3/helm-eks.git
-                                git push origin main
-                            """
-                        }
-                    }
-                }
+    steps {
+        dir('helm-chart/nginx-app') {
+            script {
+                def valuesFile = 'values.yaml'
+                def content = readFile(valuesFile)
+                def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
+                writeFile(file: valuesFile, text: updated)
+                echo "Updated ${valuesFile} with tag: ${NEW_TAG}"
             }
         }
     }
 }
+
