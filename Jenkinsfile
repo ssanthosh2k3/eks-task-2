@@ -3,22 +3,23 @@ pipeline {
 
     environment {
         DOCKER_IMAGE = "ssanthosh2k3/nginx-san"
-        DOCKER_TAG = "${BUILD_NUMBER}"
-        HELM_CHART_DIR = "charts/nginx-app"
-        VALUES_FILE = "${HELM_CHART_DIR}/values.yaml"
+        DOCKER_TAG = "${env.BUILD_NUMBER}"
+        CHART_PATH = "charts/nginx-app"
+        RELEASE_NAME = "nginx-san"
+        NAMESPACE = "default"
+        AUTO_COMMIT_MESSAGE = "Update image tag to ${DOCKER_TAG}"
     }
 
     stages {
         stage('Checkout') {
             steps {
-                git url: 'https://github.com/ssanthosh2k3/eks-task-2.git', branch: 'main'
+                git 'https://github.com/ssanthosh2k3/eks-task-2'
                 script {
-                    def commitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
-                    echo "Last commit message: '${commitMessage}'"
-                    if (commitMessage.startsWith("Update image tag to")) {
+                    def lastCommitMessage = sh(script: "git log -1 --pretty=%B", returnStdout: true).trim()
+                    echo "Last commit message: '${lastCommitMessage}'"
+                    if (lastCommitMessage == AUTO_COMMIT_MESSAGE) {
                         echo "✅ Build triggered by auto-commit. Skipping to prevent loop."
-                        currentBuild.result = 'SUCCESS'
-                        return
+                        error("Skipping build due to automated commit from Jenkins.")
                     }
                 }
             }
@@ -34,8 +35,13 @@ pipeline {
 
         stage('Push Docker Image') {
             steps {
-                script {
-                    sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                withCredentials([usernamePassword(credentialsId: 'dockerhub-creds', usernameVariable: 'DOCKER_USERNAME', passwordVariable: 'DOCKER_PASSWORD')]) {
+                    script {
+                        sh """
+                            echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
+                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                        """
+                    }
                 }
             }
         }
@@ -43,12 +49,15 @@ pipeline {
         stage('Update Helm Values') {
             steps {
                 script {
-                    sh "sed -i 's|tag: .*|tag: \"${DOCKER_TAG}\"|' ${VALUES_FILE}"
-                    sh "git config user.email 'jenkins@example.com'"
-                    sh "git config user.name 'Jenkins CI'"
-                    sh "git add ${VALUES_FILE}"
-                    sh "git commit -m 'Update image tag to ${DOCKER_TAG}' || echo 'No changes to commit'"
-                    sh "git push origin main"
+                    def valuesFile = "${CHART_PATH}/values.yaml"
+                    sh """
+                        sed -i 's|tag:.*|tag: "${DOCKER_TAG}"|' ${valuesFile}
+                        git config --global user.email "jenkins@localhost"
+                        git config --global user.name "Jenkins"
+                        git add ${valuesFile}
+                        git commit -m "${AUTO_COMMIT_MESSAGE}" || echo "No changes to commit"
+                        git push origin main || echo "No push needed"
+                    """
                 }
             }
         }
@@ -57,13 +66,15 @@ pipeline {
     post {
         always {
             echo "🧹 Cleaning up unused Docker images on Jenkins agent"
-            sh "docker image prune -af || true"
+            sh "docker image prune -af"
         }
-        success {
-            echo "✅ Build and deployment steps completed successfully."
-        }
+
         failure {
             echo "❌ Build or deployment failed."
+        }
+
+        success {
+            echo "✅ Build and deployment succeeded!"
         }
     }
 }
