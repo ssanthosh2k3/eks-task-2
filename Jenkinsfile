@@ -49,17 +49,29 @@ pipeline {
             }
         }
 
-        stage('Checkout Helm Chart') {
+        stage('Update values.yaml with new image tag') {
     steps {
-        dir('helm-chart') {
-            checkout([$class: 'GitSCM',
-                      branches: [[name: 'refs/heads/main']],
-                      userRemoteConfigs: [[
-                        url: env.HELM_REPO,
-                        credentialsId: env.GIT_CREDENTIALS
-                      ]],
-                      extensions: [[$class: 'LocalBranch', localBranch: 'main']]
-            ])
+        dir('helm-chart/nginx-app') {
+            script {
+                // Update tag
+                def valuesFile = 'values.yaml'
+                def content = readFile(valuesFile)
+                def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
+                writeFile(file: valuesFile, text: updated)
+
+                sh "git config user.email 'jenkins@example.com'"
+                sh "git config user.name 'Jenkins CI'"
+
+                sh "git add ${valuesFile}"
+                sh "git commit -m 'Update image tag to ${NEW_TAG} from Jenkins pipeline'"
+
+                withCredentials([usernamePassword(credentialsId: env.GIT_CREDENTIALS, usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                    sh """
+                        git remote set-url origin https://${GIT_USER}:${GIT_PASS}@github.com/ssanthosh2k3/helm-eks.git
+                        git push origin main
+                    """
+                }
+            }
         }
     }
 }
