@@ -8,7 +8,7 @@ pipeline {
         HELM_REPO = 'https://github.com/ssanthosh2k3/helm-eks.git'
         HELM_CHART_PATH = 'nginx-app'
         DOCKER_REPO = 'https://github.com/ssanthosh2k3/eks-task-2.git'
-        NEW_TAG = '' // will be dynamically set
+        NEW_TAG = ''
     }
 
     stages {
@@ -19,15 +19,13 @@ pipeline {
                           userRemoteConfigs: [[
                             url: env.DOCKER_REPO,
                             credentialsId: env.GIT_CREDENTIALS
-                          ]]
-                ])
+                          ]]])
             }
         }
 
         stage('Build Docker Image') {
             steps {
                 script {
-                    // Create a new tag with git short commit hash
                     def commitHash = sh(script: "git rev-parse --short HEAD", returnStdout: true).trim()
                     NEW_TAG = "build-${commitHash}"
                     echo "New Docker Tag: ${NEW_TAG}"
@@ -65,16 +63,17 @@ pipeline {
         }
 
         stage('Update values.yaml with new image tag') {
-    steps {
-        dir('helm-chart/nginx-app') {
-            script {
-                def valuesFile = 'values.yaml'
-                def content = readFile(valuesFile)
-                def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
-                writeFile(file: valuesFile, text: updated)
-                echo "Updated ${valuesFile} with tag: ${NEW_TAG}"
+            steps {
+                dir('helm-chart/nginx-app') {
+                    script {
+                        def valuesFile = 'values.yaml'
+                        def content = readFile(valuesFile)
+                        def updated = content.replaceAll(/tag: .*/, "tag: ${NEW_TAG}")
+                        writeFile(file: valuesFile, text: updated)
+                        echo "Updated ${valuesFile} with tag: ${NEW_TAG}"
+                    }
+                }
             }
         }
     }
 }
-
